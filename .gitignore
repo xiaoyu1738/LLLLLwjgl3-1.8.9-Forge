@@ -1,0 +1,26 @@
+# Gradle / build output
+.gradle/
+build/
+run/
+out/
+
+# IDEs
+eclipse/
+idea/
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+
+# Local tooling and launcher state
+.hmcl/
+.nexus-map/
+.claude/
+.kilo/
+.kilocode/
+
+# OS
+.DS_Store
+Thumbs.db

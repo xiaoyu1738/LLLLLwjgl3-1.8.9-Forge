@@ -1,0 +1,16 @@
+[
+  {
+    "modid": "lllllwjgl3",
+    "name": "LLLLLwjgl3",
+    "description": "Replaces Minecraft 1.8.9's LWJGL2 window and input backend with LWJGL3/GLFW.",
+    "version": "${version}",
+    "mcversion": "${mcversion}",
+    "url": "https://github.com/xiaoyu1738/LLLLLwjgl3-1.8.9-Forge",
+    "updateUrl": "",
+    "authorList": ["xiaoyu1738"],
+    "credits": "Inspired by GTNewHorizons/lwjgl3ify, Zarzelcow/legacy-lwjgl3 and gudenau/MC-LWJGL3.",
+    "logoFile": "",
+    "screenshots": [],
+    "dependencies": []
+  }
+]
