@@ -45,21 +45,21 @@ public final class OpenGlCompatibilitySmoke {
         matrix.position(2); matrix.limit(18);
         for (int i = 0; i < 16; i++) matrix.put(2 + i, i % 5 == 0 ? 1f : 0f);
         matrix.put(14, 3f);
-        call(GL11.class, "glLoadMatrix", new Class<?>[] {FloatBuffer.class}, matrix);
+        call(GL11.class, "glLoadMatrixf", new Class<?>[] {FloatBuffer.class}, matrix);
         FloatBuffer out = BufferUtils.createFloatBuffer(20);
         out.position(2); out.limit(18);
-        call(GL11.class, "glGetFloat", new Class<?>[] {int.class, FloatBuffer.class}, GL11.GL_MODELVIEW_MATRIX, out);
+        call(GL11.class, "glGetFloatv", new Class<?>[] {int.class, FloatBuffer.class}, GL11.GL_MODELVIEW_MATRIX, out);
         if (out.get(14) != 3f || out.position() != 2 || matrix.position() != 2)
             throw new AssertionError("Matrix/buffer state changed");
         IntBuffer viewport = BufferUtils.createIntBuffer(16);
         GL11.glViewport(2, 3, 32, 31);
-        call(GL11.class, "glGetInteger", new Class<?>[] {int.class, IntBuffer.class}, GL11.GL_VIEWPORT, viewport);
+        call(GL11.class, "glGetIntegerv", new Class<?>[] {int.class, IntBuffer.class}, GL11.GL_VIEWPORT, viewport);
         if (viewport.get(0) != 2 || viewport.get(3) != 31) throw new AssertionError("Viewport query");
         FloatBuffer color = BufferUtils.createFloatBuffer(4).put(new float[] {1, 1, 1, 1}); color.flip();
-        call(GL11.class, "glFog", new Class<?>[] {int.class, FloatBuffer.class}, GL11.GL_FOG_COLOR, color);
-        call(GL11.class, "glLight", new Class<?>[] {int.class, int.class, FloatBuffer.class}, GL11.GL_LIGHT0, GL11.GL_DIFFUSE, color);
-        call(GL11.class, "glLightModel", new Class<?>[] {int.class, FloatBuffer.class}, GL11.GL_LIGHT_MODEL_AMBIENT, color);
-        call(GL11.class, "glTexEnv", new Class<?>[] {int.class, int.class, FloatBuffer.class}, GL11.GL_TEXTURE_ENV, GL11.GL_TEXTURE_ENV_COLOR, color);
+        call(GL11.class, "glFogfv", new Class<?>[] {int.class, FloatBuffer.class}, GL11.GL_FOG_COLOR, color);
+        call(GL11.class, "glLightfv", new Class<?>[] {int.class, int.class, FloatBuffer.class}, GL11.GL_LIGHT0, GL11.GL_DIFFUSE, color);
+        call(GL11.class, "glLightModelfv", new Class<?>[] {int.class, FloatBuffer.class}, GL11.GL_LIGHT_MODEL_AMBIENT, color);
+        call(GL11.class, "glTexEnvfv", new Class<?>[] {int.class, int.class, FloatBuffer.class}, GL11.GL_TEXTURE_ENV, GL11.GL_TEXTURE_ENV_COLOR, color);
     }
 
     private static void shaders(boolean arb) throws Exception {
@@ -68,12 +68,12 @@ public final class OpenGlCompatibilitySmoke {
         ByteBuffer source = BufferUtils.createByteBuffer(bytes.length + 8);
         source.putInt(0xFFFFFFFF).put(bytes).putInt(0xFFFFFFFF);
         source.position(4); source.limit(4 + bytes.length);
-        Class<?> api = arb ? ARBShaderObjects.class : GL20.class;
         String suffix = arb ? "ARB" : "";
         int shader = arb ? ARBShaderObjects.glCreateShaderObjectARB(GL20.GL_VERTEX_SHADER) : GL20.glCreateShader(GL20.GL_VERTEX_SHADER);
         int program = arb ? ARBShaderObjects.glCreateProgramObjectARB() : GL20.glCreateProgram();
         try {
-            call(api, "glShaderSource" + suffix, new Class<?>[] {int.class, ByteBuffer.class}, shader, source);
+            if (arb) Lwjgl3ApiCompat.glShaderSourceARB(shader, source);
+            else Lwjgl3ApiCompat.glShaderSource(shader, source);
             if (source.position() != 4 || source.limit() != 4 + bytes.length) throw new AssertionError("Source buffer mutated");
             String actual = arb ? ARBShaderObjects.glGetShaderSourceARB(shader) : GL20.glGetShaderSource(shader);
             if (!text.equals(actual)) throw new AssertionError("Shader source boundary mismatch");
@@ -97,15 +97,18 @@ public final class OpenGlCompatibilitySmoke {
             if (location < 0) throw new AssertionError("Matrix uniform optimized away");
             FloatBuffer matrix = BufferUtils.createFloatBuffer(16);
             for (int i=0;i<16;i++) matrix.put(i, i%5==0 ? 1f : 0f);
-            call(api, "glUniformMatrix4" + suffix, new Class<?>[] {int.class, boolean.class, FloatBuffer.class}, location, false, matrix);
+            call(arb ? ARBShaderObjects.class : GL20.class, "glUniformMatrix4fv" + suffix,
+                    new Class<?>[] {int.class, boolean.class, FloatBuffer.class}, location, false, matrix);
             FloatBuffer read = BufferUtils.createFloatBuffer(16);
             if (arb) ARBShaderObjects.glGetUniformfvARB(program, location, read); else GL20.glGetUniformfv(program, location, read);
             if (read.get(0) != 1 || read.get(15) != 1) throw new AssertionError("Matrix upload/readback failed");
             for (int size=1;size<=4;size++) {
-                call(api, "glUniform" + size + suffix, new Class<?>[] {int.class, FloatBuffer.class}, -1, BufferUtils.createFloatBuffer(size));
-                call(api, "glUniform" + size + suffix, new Class<?>[] {int.class, IntBuffer.class}, -1, BufferUtils.createIntBuffer(size));
+                call(arb ? ARBShaderObjects.class : GL20.class, "glUniform" + size + "fv" + suffix,
+                        new Class<?>[] {int.class, FloatBuffer.class}, -1, BufferUtils.createFloatBuffer(size));
+                call(arb ? ARBShaderObjects.class : GL20.class, "glUniform" + size + "iv" + suffix,
+                        new Class<?>[] {int.class, IntBuffer.class}, -1, BufferUtils.createIntBuffer(size));
             }
-            for (int size=2;size<=3;size++) call(api, "glUniformMatrix" + size + suffix,
+            for (int size=2;size<=3;size++) call(arb ? ARBShaderObjects.class : GL20.class, "glUniformMatrix" + size + "fv" + suffix,
                     new Class<?>[] {int.class, boolean.class, FloatBuffer.class}, -1, false, BufferUtils.createFloatBuffer(size*size));
         } finally {
             if (arb) {

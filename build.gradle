@@ -41,24 +41,12 @@ repositories {
 
 configurations {
     embed
-    facadeRelocator
-    asmTool
     compile.extendsFrom(embed)
 }
 
 def lwjglVersion = '3.3.3'
 def lwjglModules = ['lwjgl', 'lwjgl-glfw', 'lwjgl-openal', 'lwjgl-opengl', 'lwjgl-nanovg', 'lwjgl-stb']
 dependencies {
-    // The facade is relocated to org.lwjglx at build time. Minecraft bytecode
-    // is rewritten to this namespace, so no LWJGL2 org.lwjgl classes remain.
-    facadeRelocator 'com.eed3si9n.jarjar:jarjar:1.14.1'
-    asmTool 'org.ow2.asm:asm-debug-all:5.0.3'
-    embed files('build/relocated/legacy-lwjgl3-relocated.jar')
-    // Display.kt in the upstream facade is compiled against Kotlin 1.6.
-    embed 'org.jetbrains.kotlin:kotlin-stdlib:1.6.10'
-    embed 'org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.6.10'
-    embed 'org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.6.10'
-
     lwjglModules.each { module ->
         embed "org.lwjgl:${module}:${lwjglVersion}"
         embed "org.lwjgl:${module}:${lwjglVersion}:natives-linux"
@@ -70,7 +58,7 @@ dependencies {
 
 configurations.all {
     // Do not let ForgeGradle put the vanilla LWJGL2 artifact ahead of the
-    // compatibility facade.
+    // compatibility namespace.
     exclude group: 'org.lwjgl.lwjgl'
 }
 
@@ -86,75 +74,9 @@ processResources {
     }
 }
 
-task relocateLegacyFacade {
-    inputs.file 'libs/legacy-lwjgl3.jar'
-    inputs.file 'src/main/java/com/lllllwjgl3/boot/FacadeBytecodeRelocator.java'
-    outputs.file 'build/relocated/legacy-lwjgl3-relocated.jar'
-    doLast {
-        file('build/relocated').mkdirs()
-        file('build/relocated/rules.txt').text = '''
-rule org.lwjgl.LWJGLException org.lwjglx.LWJGLException
-rule org.lwjgl.LWJGLUtil org.lwjglx.LWJGLUtil
-rule org.lwjgl.Sys org.lwjglx.Sys
-rule org.lwjgl.input.** org.lwjglx.input.@1
-rule org.lwjgl.opengl.Display org.lwjglx.opengl.Display
-rule org.lwjgl.opengl.DisplayMode org.lwjglx.opengl.DisplayMode
-rule org.lwjgl.opengl.PixelFormat org.lwjglx.opengl.PixelFormat
-rule org.lwjgl.opengl.ContextCapabilities org.lwjglx.opengl.ContextCapabilities
-rule org.lwjgl.opengl.GLContext org.lwjglx.opengl.GLContext
-rule org.lwjgl.opengl.OpenGLException org.lwjglx.opengl.OpenGLException
-rule org.lwjgl.opengl.EventQueue org.lwjglx.opengl.EventQueue
-rule org.lwjgl.opengl.Sync** org.lwjglx.opengl.Sync@1
-rule org.lwjgl.opengl.Util org.lwjglx.opengl.Util
-rule org.lwjgl.util.** org.lwjglx.util.@1
-'''.stripIndent()
-        javaexec {
-            classpath configurations.facadeRelocator
-            main = 'com.eed3si9n.jarjar.Main'
-            args 'process', 'build/relocated/rules.txt',
-                    'libs/legacy-lwjgl3.jar',
-                    'build/relocated/legacy-lwjgl3-jarjar.jar'
-        }
-        // compileJava needs this jar, so the ASM-only relocator is compiled
-        // on its own instead of from sourceSets.main output.
-        file('build/relocator-classes').mkdirs()
-        ant.javac(srcdir: 'src/main/java', destdir: 'build/relocator-classes',
-                includes: 'com/lllllwjgl3/boot/FacadeBytecodeRelocator.java',
-                classpath: configurations.asmTool.asPath, includeantruntime: false,
-                source: '1.8', target: '1.8', encoding: 'UTF-8')
-        javaexec {
-            classpath files('build/relocator-classes'), configurations.asmTool
-            main = 'com.lllllwjgl3.boot.FacadeBytecodeRelocator'
-            args 'build/relocated/legacy-lwjgl3-jarjar.jar',
-                    'build/relocated/legacy-lwjgl3-relocated.jar'
-        }
-    }
-}
-
-compileJava.dependsOn relocateLegacyFacade
-jar.dependsOn relocateLegacyFacade
-
-// Minecraft and mods still link LWJGL2 GL11/GL20/ARB descriptors. Patch the standard
-// LWJGL3 binding after the fat jar is assembled so its native implementation
-// and all other LWJGL3 overloads remain unchanged.
-task patchLwjgl3Api(dependsOn: jar) {
-    doLast {
-        File artifact = jar.archivePath
-        File patched = file("${artifact}.patched")
-        javaexec {
-            classpath files(sourceSets.main.output.classesDir), configurations.asmTool
-            main = 'com.lllllwjgl3.boot.Lwjgl3ApiPatcher'
-            args artifact, patched
-        }
-        java.nio.file.Files.move(patched.toPath(), artifact.toPath(),
-                java.nio.file.StandardCopyOption.REPLACE_EXISTING,
-                java.nio.file.StandardCopyOption.ATOMIC_MOVE)
-    }
-}
-
 jar {
     // ForgeGradle's old toolchain does not need Shadow here. Expanding the
-    // four LWJGL3 modules and the compatibility facade also keeps the final
+    // LWJGL3 modules and the vendored compatibility source also keeps the final
     // artifact usable from a normal 1.8.9 mods directory.
     from {
         configurations.embed.collect { dependency ->
@@ -164,10 +86,6 @@ jar {
     exclude 'META-INF/*.RSA', 'META-INF/*.SF', 'META-INF/*.DSA'
     exclude 'META-INF/versions/**', 'META-INF/INDEX.LIST'
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-    // The compatibility dependency is published for Fabric as well. These
-    // descriptors are not Forge metadata and would only confuse mod scanners.
-    exclude 'fabric.mod.json', 'legacy-lwjgl3.mixins.json', 'legacy-lwjgl3-refmap.json'
-    exclude 'com/github/zarzelcow/legacylwjgl3/mixin/**'
     // Upstream LWJGL3 JARs carry no license files; ship every applicable text.
     from(rootDir) {
         include 'LICENSE', 'THIRD_PARTY_NOTICES.md'
@@ -189,7 +107,7 @@ jar {
 // unnecessary and incompatible with its old ASM reader.
 reobfJar.enabled = false
 
-task verifyJar(dependsOn: patchLwjgl3Api) {
+task verifyJar {
     doLast {
         def artifact = jar.archivePath
         def zip = new java.util.zip.ZipFile(artifact)
@@ -223,7 +141,7 @@ task verifyJar(dependsOn: patchLwjgl3Api) {
                 if (zip.getEntry(entry) != null) throw new GradleException("Fabric metadata leaked into Forge jar: ${entry}")
             }
             zip.entries().each { entry ->
-                if (entry.name.startsWith('com/github/zarzelcow/legacylwjgl3/mixin/')) {
+        if (entry.name.startsWith('com/github/zarzelcow/legacylwjgl3/mixin/')) {
                     throw new GradleException("Inactive upstream Mixin class leaked into Forge jar: ${entry.name}")
                 }
             }
@@ -236,19 +154,18 @@ task verifyJar(dependsOn: patchLwjgl3Api) {
 build.dependsOn verifyJar
 
 test {
-    dependsOn relocateLegacyFacade, patchLwjgl3Api
     testLogging { events 'passed', 'skipped', 'failed' }
 }
 
 // Explicit opt-in: requires a desktop X11/XWayland display and a real driver.
-task openGlSmoke(type: JavaExec, dependsOn: [testClasses, patchLwjgl3Api]) {
+task openGlSmoke(type: JavaExec, dependsOn: [testClasses]) {
     classpath files(jar.archivePath, sourceSets.test.output.classesDir)
     main = 'com.lllllwjgl3.boot.OpenGlCompatibilitySmoke'
 }
 
 // Supply consumer jars as a platform-separated list; this scans all LWJGL namespaces.
-task auditLwjglLinkage(type: JavaExec, dependsOn: [testClasses, patchLwjgl3Api]) {
-    classpath sourceSets.test.runtimeClasspath, configurations.asmTool
+task auditLwjglLinkage(type: JavaExec, dependsOn: [testClasses]) {
+    classpath sourceSets.test.runtimeClasspath
     main = 'com.lllllwjgl3.boot.LwjglLinkageAudit'
     doFirst {
         if (!project.hasProperty('auditJars')) throw new GradleException('Set -PauditJars=consumer.jar[:other.jar]')
@@ -257,7 +174,7 @@ task auditLwjglLinkage(type: JavaExec, dependsOn: [testClasses, patchLwjgl3Api])
     }
 }
 
-task windowSmoke(type: JavaExec, dependsOn: [testClasses, patchLwjgl3Api]) {
+task windowSmoke(type: JavaExec, dependsOn: [testClasses]) {
     classpath files(jar.archivePath, sourceSets.test.output.classesDir)
     main = 'com.lllllwjgl3.boot.WindowCompatibilitySmoke'
     if (project.hasProperty('smokeJava')) executable project.property('smokeJava')
@@ -266,13 +183,13 @@ openGlSmoke {
     if (project.hasProperty('smokeJava')) executable project.property('smokeJava')
 }
 
-task audioSmoke(type: JavaExec, dependsOn: [testClasses, patchLwjgl3Api]) {
+task audioSmoke(type: JavaExec, dependsOn: [testClasses]) {
     classpath files(jar.archivePath, sourceSets.test.output.classesDir)
     main = 'com.lllllwjgl3.boot.AudioCompatibilitySmoke'
     if (project.hasProperty('smokeJava')) executable project.property('smokeJava')
 }
 
-task mouseScrollSmoke(type: JavaExec, dependsOn: [testClasses, patchLwjgl3Api]) {
+task mouseScrollSmoke(type: JavaExec, dependsOn: [testClasses]) {
     classpath files(jar.archivePath, sourceSets.test.output.classesDir)
     main = 'com.lllllwjgl3.boot.MouseScrollCompatibilitySmoke'
     if (project.hasProperty('smokeJava')) executable project.property('smokeJava')
@@ -281,18 +198,18 @@ task mouseScrollSmoke(type: JavaExec, dependsOn: [testClasses, patchLwjgl3Api]) 
 // Optional integration with the user's actual Glide jar; nothing is copied into production.
 mouseScrollSmoke {
     if (project.hasProperty('glideJar')) {
-        classpath configurations.asmTool, sourceSets.test.runtimeClasspath
+        classpath sourceSets.test.runtimeClasspath
         args project.property('glideJar')
     }
 }
 
-task keyboardSmoke(type: JavaExec, dependsOn: [testClasses, patchLwjgl3Api]) {
+task keyboardSmoke(type: JavaExec, dependsOn: [testClasses]) {
     classpath files(jar.archivePath, sourceSets.test.output.classesDir)
     main = 'com.lllllwjgl3.boot.KeyboardCompatibilitySmoke'
     if (project.hasProperty('smokeJava')) executable project.property('smokeJava')
 }
 
-task windowCreationFailureSmoke(type: JavaExec, dependsOn: [testClasses, patchLwjgl3Api]) {
+task windowCreationFailureSmoke(type: JavaExec, dependsOn: [testClasses]) {
     classpath files(jar.archivePath, sourceSets.test.output.classesDir)
     main = 'com.lllllwjgl3.boot.WindowCreationFailureSmoke'
     if (project.hasProperty('smokeJava')) executable project.property('smokeJava')

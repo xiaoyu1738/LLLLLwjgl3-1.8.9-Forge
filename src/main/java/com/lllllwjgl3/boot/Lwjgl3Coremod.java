@@ -22,7 +22,7 @@ public final class Lwjgl3Coremod implements IFMLLoadingPlugin {
         // replacement LWJGL3 classes live in this coremod's fat jar.
         detachVanillaLwjgl(Launch.classLoader);
         Lwjgl3Platform.detect();
-        // GLFW must see the platform hint before the relocated Display class
+        // GLFW must see the platform hint before the vendored Display class
         // initializes. This is intentionally done during coremod construction.
         GlfwInitHint.apply(Launch.classLoader, Lwjgl3Platform.getBackend().name());
         verifyRuntimeNamespace(Launch.classLoader, replacementSource);
@@ -39,7 +39,7 @@ public final class Lwjgl3Coremod implements IFMLLoadingPlugin {
                         + "was loaded from " + glSource + " instead of " + replacementSource);
             }
         } catch (ClassNotFoundException e) {
-            throw new IllegalStateException("LWJGL3 runtime or relocated facade is missing from the mod jar", e);
+            throw new IllegalStateException("LWJGL3 runtime or compatibility namespace is missing from the mod jar", e);
         }
     }
 

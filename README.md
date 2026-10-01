@@ -11,7 +11,7 @@ LWJGL2 运行时。Minecraft/Forge 客户端字节码中的 LWJGL2 符号会在�
 - 启动早期将当前 fat JAR 前置到 LaunchWrapper 的实际 URLClassPath loader
   列表，再解除 `org.lwjgl.*` 父类加载隔离，并在
   `Lwjgl3ClassTransformer` 中重写类、字段、方法描述符、异常和指令操作数。
-- 构建期用 Jar Jar 将 `Zarzelcow/legacy-lwjgl3` 重定位为 `org.lwjglx`；最终
+- 直接 vendored `Zarzelcow/legacy-lwjgl3` 兼容层源码到 `org.lwjglx` 命名空间；最终
   Forge JAR 不包含 `org.lwjgl.input.Keyboard`、`org.lwjgl.opengl.Display` 等
   LWJGL2 类。
 - `org.lwjglx.openal` 是源码形式的 OpenAL 兼容 API，直接桥接 LWJGL3
@@ -25,6 +25,24 @@ LWJGL2 运行时。Minecraft/Forge 客户端字节码中的 LWJGL2 符号会在�
 - 可用 `-Dlllllwjgl3.xim=false` 关闭 IME 兼容路径，或用
   `-Dlllllwjgl3.waylandIme=native` 强制原生 Wayland（此模式不承诺 GLFW
   3.3 的 Fcitx5 preedit/commit 支持）。
+
+## 上游代码说明
+
+LWJGL2 兼容层直接 vendored 自
+[Zarzelcow/legacy-lwjgl3](https://github.com/Zarzelcow/legacy-lwjgl3)，来源提交为
+`78643b2a9621ab04d13e3ec0a222874d793516d2`。对应代码位于
+`src/main/java/org/lwjglx/` 和 `src/main/java/com/github/zarzelcow/legacylwjgl3/`，
+不是运行时下载的依赖，也不是构建时嵌入的二进制 JAR。
+
+为适配 Forge 1.8.9，本项目对上游代码做了以下本地改造：
+
+- 将上游 `org.lwjgl` 兼容 API 移入 `org.lwjglx` 命名空间，并将窗口实现接入本项目的 `DisplayCompat` 和诊断层。
+- 将 GLFW 鼠标坐标、捕获/释放、滚轮单位和销毁重建状态统一到 LWJGL2 语义。
+- 在源码层合并 GLFW key/char 回调，保持创造模式搜索、中文输入和 Unicode 输入行为。
+- 将旧版 OpenGL buffer overload 在 `Lwjgl3ClassTransformer` 中改写到 LWJGL3 原生方法或 `Lwjgl3ApiCompat`，不再使用 JarJar、二进制 facade 或独立 ASM JAR patcher。
+
+上游兼容层按 LGPL-2.1 发布；许可证和第三方组件说明见
+`THIRD_PARTY_NOTICES.md` 与 `licenses/`。
 
 ## 安装
 
@@ -70,11 +88,10 @@ crash-GL query`；若看到 `WARN: neutralizer found NO target`，说明类映�
 ./gradlew clean build --console=plain
 ```
 
-发行 JAR 是 fat JAR，包含重定位后的 facade、LWJGL3 Java API、三平台 natives
-和 Kotlin 运行时。工程不执行 ForgeGradle 反混淆：本 Mod 不包含 Minecraft
-类，而旧版反混淆器无法安全读取 LWJGL3 的多版本字节码。构建前会自动生成
-`build/relocated/legacy-lwjgl3-relocated.jar`，并在 `verifyJar` 阶段检查
-LWJGL2 类没有泄漏。
+发行 JAR 是 fat JAR，包含 vendored 兼容层源码、LWJGL3 Java API 和三平台 natives
+。工程不执行 ForgeGradle 反混淆：本 Mod 不包含 Minecraft
+类，而旧版反混淆器无法安全读取 LWJGL3 的多版本字节码。构建时不生成二进制
+facade 或 JarJar 中间产物，并在 `verifyJar` 阶段检查 LWJGL2 类没有泄漏。
 
 ## 设计说明
 
@@ -110,6 +127,6 @@ Wayland text-input 协议的 native backend。
 ## 许可证
 
 本项目以 [GPL-3.0-or-later](LICENSE) 发布。随 JAR 分发的第三方组件
-（legacy-lwjgl3、MC-LWJGL3 兼容层、LWJGL 2/3、Kotlin 运行时）沿用各自的
+（legacy-lwjgl3、MC-LWJGL3 兼容层和 LWJGL 2/3）沿用各自的
 许可证，均与 GPL-3.0 兼容，详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
 与 `licenses/` 目录。

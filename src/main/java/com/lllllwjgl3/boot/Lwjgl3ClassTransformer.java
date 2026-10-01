@@ -20,7 +20,7 @@ import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.VarInsnNode;
 import org.objectweb.asm.tree.InsnNode;
 
-/** Rewrites LWJGL2 linkage to the relocated org.lwjglx facade. */
+/** Rewrites LWJGL2 linkage to the vendored compatibility surface. */
 public final class Lwjgl3ClassTransformer implements IClassTransformer {
     private static final String SAFE_CRASH_REPORT_PROPERTY = "lllllwjgl3.safeCrashReport";
     private static final Set<String> LEGACY_OPENGL_CLASSES = new HashSet<String>(Arrays.asList(
@@ -49,6 +49,7 @@ public final class Lwjgl3ClassTransformer implements IClassTransformer {
                     : "[LLLLLwjgl3] WARN: character shortcut dispatch not found in Minecraft");
         }
         if (keyBindingClass) instrumentKeyBinding(node);
+        rewriteLegacyOpenGlCalls(node);
         // RemappingMethodAdapter in ASM 5 requires expanded frames. The
         // adapter rewrites frame locals/stack entries while preserving the
         // original frame semantics; it does not load application classes.
@@ -61,6 +62,76 @@ public final class Lwjgl3ClassTransformer implements IClassTransformer {
         });
         node.accept(remapper);
         return writer.toByteArray();
+    }
+
+    private static void rewriteLegacyOpenGlCalls(ClassNode node) {
+        for (MethodNode method : node.methods) {
+            for (AbstractInsnNode instruction : method.instructions.toArray()) {
+                if (!(instruction instanceof MethodInsnNode)) continue;
+                MethodInsnNode call = (MethodInsnNode) instruction;
+                rewriteLegacyOpenGlCall(call);
+            }
+        }
+    }
+
+    private static void rewriteLegacyOpenGlCall(MethodInsnNode call) {
+        String owner = call.owner;
+        String name = call.name;
+        String descriptor = call.desc;
+        String suffix = "org/lwjgl/opengl/ARBShaderObjects".equals(owner) ? "ARB" : "";
+
+        if ("org/lwjgl/opengl/GL20".equals(owner)
+                || "org/lwjgl/opengl/ARBShaderObjects".equals(owner)) {
+            for (int size = 1; size <= 4; size++) {
+                if (name.equals("glUniform" + size + suffix)) {
+                    if ("(ILjava/nio/FloatBuffer;)V".equals(descriptor)) {
+                        call.name = "glUniform" + size + "fv" + suffix;
+                        return;
+                    }
+                    if ("(ILjava/nio/IntBuffer;)V".equals(descriptor)) {
+                        call.name = "glUniform" + size + "iv" + suffix;
+                        return;
+                    }
+                }
+            }
+            for (int size = 2; size <= 4; size++) {
+                if (name.equals("glUniformMatrix" + size + suffix)
+                        && "(IZLjava/nio/FloatBuffer;)V".equals(descriptor)) {
+                    call.name = "glUniformMatrix" + size + "fv" + suffix;
+                    return;
+                }
+            }
+            if (name.equals("glShaderSource" + suffix)
+                    && "(ILjava/nio/ByteBuffer;)V".equals(descriptor)) {
+                call.owner = "com/lllllwjgl3/boot/Lwjgl3ApiCompat";
+                call.name = "glShaderSource" + suffix;
+                call.itf = false;
+            }
+            return;
+        }
+
+        if (!"org/lwjgl/opengl/GL11".equals(owner)) return;
+        String target = null;
+        if ("glGetFloat".equals(name) && "(ILjava/nio/FloatBuffer;)V".equals(descriptor)) target = "glGetFloatv";
+        if ("glGetInteger".equals(name) && "(ILjava/nio/IntBuffer;)V".equals(descriptor)) target = "glGetIntegerv";
+        if ("glGetDouble".equals(name) && "(ILjava/nio/DoubleBuffer;)V".equals(descriptor)) target = "glGetDoublev";
+        if ("glGetBoolean".equals(name) && "(ILjava/nio/ByteBuffer;)V".equals(descriptor)) target = "glGetBooleanv";
+        if ("glMultMatrix".equals(name) && "(Ljava/nio/FloatBuffer;)V".equals(descriptor)) target = "glMultMatrixf";
+        if ("glMultMatrix".equals(name) && "(Ljava/nio/DoubleBuffer;)V".equals(descriptor)) target = "glMultMatrixd";
+        if ("glLoadMatrix".equals(name) && "(Ljava/nio/FloatBuffer;)V".equals(descriptor)) target = "glLoadMatrixf";
+        if ("glLoadMatrix".equals(name) && "(Ljava/nio/DoubleBuffer;)V".equals(descriptor)) target = "glLoadMatrixd";
+        if ("glFog".equals(name) && "(ILjava/nio/FloatBuffer;)V".equals(descriptor)) target = "glFogfv";
+        if ("glFog".equals(name) && "(ILjava/nio/IntBuffer;)V".equals(descriptor)) target = "glFogiv";
+        if ("glLight".equals(name) && "(IILjava/nio/FloatBuffer;)V".equals(descriptor)) target = "glLightfv";
+        if ("glLight".equals(name) && "(IILjava/nio/IntBuffer;)V".equals(descriptor)) target = "glLightiv";
+        if ("glLightModel".equals(name) && "(ILjava/nio/FloatBuffer;)V".equals(descriptor)) target = "glLightModelfv";
+        if ("glLightModel".equals(name) && "(ILjava/nio/IntBuffer;)V".equals(descriptor)) target = "glLightModeliv";
+        if ("glTexEnv".equals(name) && "(IILjava/nio/FloatBuffer;)V".equals(descriptor)) target = "glTexEnvfv";
+        if ("glTexEnv".equals(name) && "(IILjava/nio/IntBuffer;)V".equals(descriptor)) target = "glTexEnviv";
+        if ("glTexGen".equals(name) && "(IILjava/nio/FloatBuffer;)V".equals(descriptor)) target = "glTexGenfv";
+        if ("glTexGen".equals(name) && "(IILjava/nio/IntBuffer;)V".equals(descriptor)) target = "glTexGeniv";
+        if ("glTexGen".equals(name) && "(IILjava/nio/DoubleBuffer;)V".equals(descriptor)) target = "glTexGendv";
+        if (target != null) call.name = target;
     }
 
     /** Logs the event key beside Minecraft's live bindings when diagnostics are enabled. */

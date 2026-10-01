@@ -1,9 +1,7 @@
 package com.lllllwjgl3.boot;
 
 import java.io.ByteArrayOutputStream;
-import java.io.File;
 import java.io.InputStream;
-import java.util.zip.ZipFile;
 
 import org.junit.Test;
 import org.objectweb.asm.ClassReader;
@@ -234,6 +232,54 @@ public class Lwjgl3ClassTransformerTest {
         }
     }
 
+    @Test
+    public void rewritesLegacyOpenGlBufferOverloadsAtCallSites() {
+        ClassWriter writer = new ClassWriter(0);
+        writer.visit(Opcodes.V1_8, Opcodes.ACC_PUBLIC, "fixture/GlUser", null,
+                "java/lang/Object", null);
+        MethodVisitor method = writer.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "run", "(ILjava/nio/FloatBuffer;)V", null, null);
+        method.visitVarInsn(Opcodes.ILOAD, 0);
+        method.visitVarInsn(Opcodes.ALOAD, 1);
+        method.visitMethodInsn(Opcodes.INVOKESTATIC, "org/lwjgl/opengl/GL20", "glUniform4",
+                "(ILjava/nio/FloatBuffer;)V", false);
+        method.visitVarInsn(Opcodes.ILOAD, 0);
+        method.visitVarInsn(Opcodes.ALOAD, 1);
+        method.visitMethodInsn(Opcodes.INVOKESTATIC, "org/lwjgl/opengl/GL11", "glFog",
+                "(ILjava/nio/FloatBuffer;)V", false);
+        method.visitVarInsn(Opcodes.ILOAD, 0);
+        method.visitVarInsn(Opcodes.ALOAD, 1);
+        method.visitMethodInsn(Opcodes.INVOKESTATIC, "org/lwjgl/opengl/GL20", "glShaderSource",
+                "(ILjava/nio/ByteBuffer;)V", false);
+        method.visitInsn(Opcodes.RETURN);
+        method.visitMaxs(2, 2);
+        method.visitEnd();
+        writer.visitEnd();
+
+        ClassNode node = new ClassNode();
+        new ClassReader(new Lwjgl3ClassTransformer().transform(
+                "fixture.GlUser", "fixture.GlUser", writer.toByteArray())).accept(node, 0);
+        int calls = 0;
+        for (MethodNode methodNode : node.methods) {
+            for (AbstractInsnNode instruction = methodNode.instructions.getFirst();
+                    instruction != null; instruction = instruction.getNext()) {
+                if (!(instruction instanceof MethodInsnNode)) continue;
+                MethodInsnNode call = (MethodInsnNode) instruction;
+                if ("glUniform4fv".equals(call.name)) {
+                    assertEquals("org/lwjgl/opengl/GL20", call.owner);
+                    calls++;
+                } else if ("glFogfv".equals(call.name)) {
+                    assertEquals("org/lwjgl/opengl/GL11", call.owner);
+                    calls++;
+                } else if ("glShaderSource".equals(call.name)) {
+                    assertEquals("com/lllllwjgl3/boot/Lwjgl3ApiCompat", call.owner);
+                    calls++;
+                }
+            }
+        }
+        assertEquals(3, calls);
+    }
+
     private static void emitEventKeyTernary(ClassWriter writer, String name, boolean offset) {
         MethodVisitor method = writer.visitMethod(Opcodes.ACC_PUBLIC, name, "()I", null, null);
         org.objectweb.asm.Label useKey = new org.objectweb.asm.Label();
@@ -257,23 +303,15 @@ public class Lwjgl3ClassTransformerTest {
     }
 
     @Test
-    public void lwjglxOpenAlFacadeIsPresent() throws Exception {
-        ZipFile jar = new ZipFile(new File("build/relocated/legacy-lwjgl3-relocated.jar"));
-        try {
-            assertTrue(jar.getEntry("org/lwjglx/input/Keyboard.class") != null);
-            // GL is an LWJGL3 native binding, not part of the LWJGL2 facade.
-            // A substring-based relocation rule used to produce the missing
-            // org.lwjglx.opengl.GL class here.
-            assertTrue(jar.getEntry("org/lwjglx/opengl/GL.class") == null);
-            java.io.InputStream glContext = jar.getInputStream(jar.getEntry("org/lwjglx/opengl/GLContext.class"));
-            try {
-                assertTrue(hasMethod(readAll(glContext), "getFunctionAddress", "(Ljava/lang/String;)J"));
-            } finally {
-                glContext.close();
-            }
-        } finally {
-            jar.close();
-        }
+    public void vendoredFacadeIsPresent() throws Exception {
+        assertTrue(Lwjgl3ClassTransformerTest.class.getClassLoader()
+                .getResource("org/lwjglx/input/Keyboard.class") != null);
+        assertTrue(Lwjgl3ClassTransformerTest.class.getClassLoader()
+                .getResource("org/lwjglx/opengl/GL.class") == null);
+        InputStream glContext = Lwjgl3ClassTransformerTest.class.getClassLoader()
+                .getResourceAsStream("org/lwjglx/opengl/GLContext.class");
+        assertTrue(glContext != null);
+        assertTrue(hasMethod(readAll(glContext), "getFunctionAddress", "(Ljava/lang/String;)J"));
         ClassNode display = new ClassNode();
         InputStream displayBytes = Lwjgl3ClassTransformerTest.class.getClassLoader()
                 .getResourceAsStream("org/lwjglx/opengl/Display.class");

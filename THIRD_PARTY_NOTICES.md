@@ -4,14 +4,14 @@ This project is licensed under the GNU General Public License v3.0 or later
 (see `LICENSE`). The release JAR also contains the following third-party
 components under their own licenses, all of which are GPL-3.0 compatible.
 
-## legacy-lwjgl3
+## legacy-lwjgl3 source
 
-`libs/legacy-lwjgl3.jar` is the JitPack build of
+The vendored compatibility sources under `src/main/java/org/lwjglx/` and
+`src/main/java/com/github/zarzelcow/legacylwjgl3/` are derived from
 [Zarzelcow/legacy-lwjgl3](https://github.com/Zarzelcow/legacy-lwjgl3), commit
-`78643b2a9621ab04d13e3ec0a222874d793516d2`. It is relocated to `org.lwjglx`
-at build time and shipped inside the release JAR. It is distributed under the
-GNU LGPL v2.1 or later; the license text is included in the archive as
-`LICENSE_legacy-lwjgl3`.
+`78643b2a9621ab04d13e3ec0a222874d793516d2`. They are included as source rather
+than consumed as a binary facade, and are distributed under the GNU LGPL v2.1
+or later (`licenses/LGPL-2.1.txt`).
 
 ## MC-LWJGL3 compatibility API
 
@@ -41,12 +41,6 @@ The bundled natives include libraries under their own licenses:
 - OpenAL Soft: GNU LGPL v2 or later (`licenses/LGPL-2.0-OpenAL-Soft.txt`).
 - NanoVG: zlib license.
 - stb: public domain or MIT, at the user's choice.
-
-## Kotlin standard library
-
-`org.jetbrains.kotlin:kotlin-stdlib` 1.6.10 (required by the legacy-lwjgl3
-`Display` implementation) is bundled under the Apache License 2.0
-(`licenses/Apache-2.0.txt`).
 
 The release JAR carries `LICENSE`, this file and the `licenses/` directory
 under `META-INF/`.
