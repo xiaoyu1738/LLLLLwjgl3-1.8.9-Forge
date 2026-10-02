@@ -2,9 +2,12 @@ package com.lllllwjgl3.boot;
 
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.glfw.GLFWScrollCallback;
+import org.lwjgl.system.MemoryStack;
 import org.lwjglx.input.Mouse;
 import org.lwjglx.opengl.Display;
 import org.lwjglx.opengl.DisplayMode;
+
+import java.nio.DoubleBuffer;
 
 /** Invokes the actual installed GLFW callback, then consumes the public LWJGL2 API. */
 public final class MouseScrollCompatibilitySmoke {
@@ -15,6 +18,7 @@ public final class MouseScrollCompatibilitySmoke {
         try {
             Display.class.getMethod("create").invoke(null);
             Mouse.poll(); Mouse.getDWheel(); while (Mouse.next()) { }
+            checkGuiCursorPosition();
             GLFWScrollCallback callback = GLFW.glfwSetScrollCallback(Display.getHandle(), null);
             if (callback == null) throw new AssertionError("Scroll callback not installed");
             GLFW.glfwSetScrollCallback(Display.getHandle(), callback);
@@ -102,5 +106,37 @@ public final class MouseScrollCompatibilitySmoke {
         Mouse.poll();
         if (Mouse.getDWheel()!=0 || Mouse.next()) throw new AssertionError("Wheel repeated on next poll");
         if (expected==120 && polled/4!=30) throw new AssertionError("Glide integer scroll step is zero");
+    }
+
+    private static void checkGuiCursorPosition() {
+        int centerX = Display.getWidth() / 2;
+        int centerY = Display.getHeight() / 2;
+
+        Mouse.setGrabbed(true);
+        openGuiAtCenter(centerX, centerY);
+        moveCursor(280, 120);
+        Mouse.setGrabbed(true);
+        openGuiAtCenter(centerX, centerY);
+
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            DoubleBuffer nativeX = stack.mallocDouble(1), nativeY = stack.mallocDouble(1);
+            GLFW.glfwGetCursorPos(Display.getHandle(), nativeX, nativeY);
+            int actualX = (int) Math.round(nativeX.get(0));
+            int actualY = Display.getHeight() - 1 - (int) Math.round(nativeY.get(0));
+            if (actualX != centerX || actualY != centerY)
+                throw new AssertionError("GUI cursor was not released at window center: "
+                        + actualX + "," + actualY);
+        }
+    }
+
+    private static void moveCursor(int x, int y) {
+        Mouse.setCursorPosition(x, y);
+        GLFW.glfwPollEvents();
+    }
+
+    private static void openGuiAtCenter(int centerX, int centerY) {
+        Mouse.setCursorPosition(centerX, centerY);
+        Mouse.setGrabbed(false);
+        GLFW.glfwPollEvents();
     }
 }

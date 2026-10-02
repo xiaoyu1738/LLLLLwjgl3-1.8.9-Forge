@@ -48,7 +48,7 @@ LWJGL2 兼容层直接 vendored 自
 
 1. 安装 Forge `1.8.9-11.15.1.2318`，使用 Java 8。
 2. 执行 `./gradlew build`。
-3. 将 `build/libs/LLLLLwjgl3-1.8.9-Forge-1.0.0.jar` 放入实例的 `mods`。
+3. 将 `build/libs/LLLLLwjgl3-1.8.9-Forge-1.0.1.jar` 放入实例的 `mods`。
 4. 启动普通 Forge 客户端，不要再安装其他 LWJGL2 替换 Mod。
 
 Wayland 会在 `XDG_SESSION_TYPE=wayland` 或 `WAYLAND_DISPLAY` 存在时被识别。

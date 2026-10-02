@@ -112,6 +112,8 @@ public final class WindowCompatibilitySmoke {
             Display.setDisplayMode(new DisplayMode(480, 320));
             Display.update();
             if (GLFW.glfwGetWindowMonitor(handle) != 0) throw new AssertionError("Windowed mode retained monitor");
+            if (Display.getX() != 120 || Display.getY() != 140)
+                throw new AssertionError("Windowed position was not restored after fullscreen transition");
             if (Display.getHandle() != handle || !GL11.glIsTexture(texture))
                 throw new AssertionError("Fullscreen transition lost GL resources");
         } finally {

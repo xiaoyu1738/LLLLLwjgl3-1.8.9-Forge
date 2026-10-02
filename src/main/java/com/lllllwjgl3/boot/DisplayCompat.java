@@ -3,6 +3,7 @@ package com.lllllwjgl3.boot;
 import java.nio.IntBuffer;
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.system.MemoryStack;
+import org.lwjgl.system.MemoryUtil;
 import org.lwjglx.opengl.DisplayMode;
 
 /** LWJGL2 window position API. Query GLFW so compositor moves are reflected. */
@@ -35,6 +36,12 @@ public final class DisplayCompat {
         }
     }
 
+    public static void setWindowedDisplayMode(long window, int x, int y, DisplayMode mode) {
+        if (window <= 0) return;
+        GLFW.glfwSetWindowMonitor(window, MemoryUtil.NULL, x, y,
+                mode.getWidth(), mode.getHeight(), GLFW.GLFW_DONT_CARE);
+    }
+
     public static boolean isActive(long window) {
         return window > 0 && GLFW.glfwGetWindowAttrib(window, GLFW.GLFW_FOCUSED) == GLFW.GLFW_TRUE;
     }
@@ -65,5 +72,15 @@ public final class DisplayCompat {
         // Wayland assigns positions in the compositor and disallows this request.
         if (window > 0 && GLFW.glfwGetPlatform() != GLFW.GLFW_PLATFORM_WAYLAND)
             GLFW.glfwSetWindowPos(window, x, y);
+    }
+
+    public static void centerWindow(long window, int width, int height) {
+        if (window <= 0 || GLFW.glfwGetPlatform() == GLFW.GLFW_PLATFORM_WAYLAND) return;
+        long monitor = GLFW.glfwGetPrimaryMonitor();
+        if (monitor == 0) return;
+        org.lwjgl.glfw.GLFWVidMode mode = GLFW.glfwGetVideoMode(monitor);
+        if (mode == null) return;
+        setLocation(window, Math.max(0, (mode.width() - width) / 2),
+                Math.max(0, (mode.height() - height) / 2));
     }
 }

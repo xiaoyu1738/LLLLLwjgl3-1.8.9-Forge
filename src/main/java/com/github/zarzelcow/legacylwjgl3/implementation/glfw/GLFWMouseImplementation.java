@@ -156,11 +156,8 @@ public class GLFWMouseImplementation implements MouseImplementation {
 
     @Override
     public void grabMouse(boolean grab) {
-        int restore_x = this.last_x;
-        int restore_y = this.last_y;
-        this.grabbed = grab;
         GLFW.glfwSetInputMode(this.windowHandle, GLFW.GLFW_CURSOR, grab ? GLFW.GLFW_CURSOR_DISABLED : GLFW.GLFW_CURSOR_NORMAL);
-        if (!grab) setCursorPosition(restore_x, restore_y);
+        this.grabbed = grab;
         this.reset();
     }
 

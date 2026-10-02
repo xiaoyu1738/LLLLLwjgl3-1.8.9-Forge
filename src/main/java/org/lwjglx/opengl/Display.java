@@ -24,8 +24,10 @@ public final class Display {
     private static DisplayMode displayMode = new DisplayMode(640, 480, 24, 60);
     private static int width;
     private static int height;
-    private static int xPos;
-    private static int yPos;
+    private static int xPos = -1;
+    private static int yPos = -1;
+    private static boolean fullscreen;
+    private static boolean preserveWindowedPosition;
     private static boolean windowResized;
     private static GLFWWindowSizeCallback sizeCallback;
     private static ByteBuffer[] cachedIcons;
@@ -55,10 +57,19 @@ public final class Display {
 
     public static void setDisplayMode(DisplayMode mode) {
         if (mode == null) throw new NullPointerException("mode");
+        if (!fullscreen && isCreated() && !preserveWindowedPosition) {
+            xPos = DisplayCompat.getX(handle, xPos);
+            yPos = DisplayCompat.getY(handle, yPos);
+        }
         displayMode = mode;
         width = mode.getWidth();
         height = mode.getHeight();
-        DisplayCompat.setDisplayMode(handle, mode);
+        if (!fullscreen && isCreated()) DisplayCompat.setWindowedDisplayMode(handle, xPos, yPos, mode);
+        else DisplayCompat.setDisplayMode(handle, mode);
+        if (!fullscreen && isCreated()) {
+            DisplayCompat.setLocation(handle, xPos, yPos);
+            preserveWindowedPosition = true;
+        }
     }
 
     public static int getWidth() {
@@ -149,6 +160,15 @@ public final class Display {
         if (Mouse.isCreated()) Mouse.poll();
         if (Keyboard.isCreated()) Keyboard.poll();
         GLFW.glfwSwapBuffers(handle);
+        if (!fullscreen && preserveWindowedPosition) {
+            int actualX = DisplayCompat.getX(handle, xPos);
+            int actualY = DisplayCompat.getY(handle, yPos);
+            if (actualX != xPos || actualY != yPos) {
+                DisplayCompat.setLocation(handle, xPos, yPos);
+            } else {
+                preserveWindowedPosition = false;
+            }
+        }
     }
 
     public static void create(PixelFormat pixelFormat) throws LWJGLException {
@@ -158,10 +178,17 @@ public final class Display {
         GLFW.glfwDefaultWindowHints();
         GLFW.glfwWindowHint(GLFW.GLFW_VISIBLE, GLFW.GLFW_FALSE);
         GLFW.glfwWindowHint(GLFW.GLFW_RESIZABLE, resizable ? GLFW.GLFW_TRUE : GLFW.GLFW_FALSE);
+        long monitor = fullscreen ? GLFW.glfwGetPrimaryMonitor() : MemoryUtil.NULL;
         handle = DisplayCompat.createWindow(displayMode.getWidth(), displayMode.getHeight(), title,
-                MemoryUtil.NULL, MemoryUtil.NULL);
+                monitor, MemoryUtil.NULL);
         width = displayMode.getWidth();
         height = displayMode.getHeight();
+        if (!fullscreen) {
+            if (xPos < 0 || yPos < 0) DisplayCompat.centerWindow(handle, width, height);
+            if (xPos >= 0 && yPos >= 0) DisplayCompat.setLocation(handle, xPos, yPos);
+            xPos = DisplayCompat.getX(handle, xPos);
+            yPos = DisplayCompat.getY(handle, yPos);
+        }
         GLFW.glfwMakeContextCurrent(handle);
         GL.createCapabilities();
         sizeCallback = GLFWWindowSizeCallback.create(Display::resizeCallback);
@@ -177,12 +204,29 @@ public final class Display {
     }
 
     public static void setFullscreen(boolean fullscreen) {
-        if (!isCreated()) return;
+        if (Display.fullscreen == fullscreen) return;
+        if (!isCreated()) {
+            Display.fullscreen = fullscreen;
+            return;
+        }
         if (fullscreen) {
+            if (xPos < 0 || yPos < 0) {
+                xPos = DisplayCompat.getX(handle, xPos);
+                yPos = DisplayCompat.getY(handle, yPos);
+            }
+            Display.fullscreen = true;
             long monitor = GLFW.glfwGetPrimaryMonitor();
             GLFW.glfwSetWindowMonitor(handle, monitor, 0, 0, width, height, displayMode.getFrequency());
         } else {
+            Display.fullscreen = false;
+            if (xPos < 0 || yPos < 0) {
+                DisplayCompat.centerWindow(handle, width, height);
+                xPos = DisplayCompat.getX(handle, xPos);
+                yPos = DisplayCompat.getY(handle, yPos);
+            }
             GLFW.glfwSetWindowMonitor(handle, MemoryUtil.NULL, xPos, yPos, width, height, GLFW.GLFW_DONT_CARE);
+            DisplayCompat.setLocation(handle, xPos, yPos);
+            preserveWindowedPosition = true;
         }
     }
 
@@ -258,18 +302,19 @@ public final class Display {
     }
 
     public static int getX() {
-        xPos = DisplayCompat.getX(handle, xPos);
+        if (!fullscreen && !preserveWindowedPosition) xPos = DisplayCompat.getX(handle, xPos);
         return xPos;
     }
 
     public static int getY() {
-        yPos = DisplayCompat.getY(handle, yPos);
+        if (!fullscreen && !preserveWindowedPosition) yPos = DisplayCompat.getY(handle, yPos);
         return yPos;
     }
 
     public static void setLocation(int x, int y) {
         xPos = x;
         yPos = y;
-        DisplayCompat.setLocation(handle, x, y);
+        preserveWindowedPosition = true;
+        if (!fullscreen) DisplayCompat.setLocation(handle, x, y);
     }
 }
